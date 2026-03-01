@@ -164,6 +164,7 @@ tbody tr:hover{background:var(--accent-soft)}
 .status-btn.s1{background:rgba(29,53,87,.1);color:var(--accent)}
 .status-btn.s2{background:rgba(21,128,61,.1);color:var(--low)}
 .status-btn.s3{background:rgba(180,83,9,.1);color:var(--mid)}
+.status-btn.s4{background:rgba(109,40,217,.1);color:#7C3AED}
 /* Toast */
 .toast{
   position:fixed;bottom:32px;left:50%;transform:translateX(-50%) translateY(20px);
@@ -377,6 +378,7 @@ main{max-width:1200px;margin:0 auto;padding:32px 24px}
     <button class="filter-btn" data-filter="已投诉" onclick="setFilter(this,'已投诉')">已投诉</button>
     <button class="filter-btn" data-filter="已处理" onclick="setFilter(this,'已处理')">已处理</button>
     <button class="filter-btn" data-filter="已驳回" onclick="setFilter(this,'已驳回')">已驳回</button>
+    <button class="filter-btn" data-filter="转人工" onclick="setFilter(this,'转人工')">转人工</button>
   </div>
   <div class="drawer-body" id="drawerBody">
     <div class="drawer-loading">加载中...</div>
@@ -447,8 +449,8 @@ main{max-width:1200px;margin:0 auto;padding:32px 24px}
 </div>
 <div class="toast" id="toast"></div>
 <script>
-const STATUS_LABELS=['待投诉','已投诉','已处理','已驳回'];
-const STATUS_CLS=['s0','s1','s2','s3'];
+const STATUS_LABELS=['待投诉','已投诉','已处理','已驳回','转人工'];
+const STATUS_CLS=['s0','s1','s2','s3','s4'];
 let timerInterval=null;
 let noteStatuses={};
 let fileId=null;
@@ -785,7 +787,7 @@ function renderDrawer(){
     body.innerHTML=`<div class="drawer-empty">${drawerFilter==='all'?'暂无投诉记录':'暂无该状态的记录'}</div>`;
     return;
   }
-  const statusCls={'已投诉':'s1','已处理':'s2','已驳回':'s3'};
+  const statusCls={'已投诉':'s1','已处理':'s2','已驳回':'s3','转人工':'s4'};
   const riskCls={'高风险':'high','中风险':'mid','低风险':'low'};
   let html=`<div class="complaint-count">共 ${filtered.length} 条记录</div>`;
   filtered.forEach(d=>{
@@ -868,7 +870,7 @@ async function doDeleteBatch(fid){
 </script>
 </main>
 <footer style="text-align:center;padding:20px;font-size:12px;color:var(--text3);font-family:'JetBrains Mono',monospace;border-top:1px solid var(--border-light)">
-  v1.0.2
+  v1.0.3
 </footer>
 </body>
 </html>
