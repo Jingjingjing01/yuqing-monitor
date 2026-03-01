@@ -171,49 +171,59 @@ tbody tr:hover{background:var(--accent-soft)}
   font-size:13px;opacity:0;transition:all .3s;pointer-events:none;z-index:999;
 }
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-/* 左右布局 */
-.layout{display:flex;align-items:flex-start;max-width:1440px;margin:0 auto;padding:0 16px}
-.sidebar{
-  width:240px;flex-shrink:0;
-  position:sticky;top:61px;
-  height:calc(100vh - 61px);overflow-y:auto;
-  padding:28px 16px 40px;
-  border-right:1px solid var(--border-light);
+/* 使用指南下拉面板 */
+.guide-btn{
+  display:flex;align-items:center;gap:6px;padding:7px 14px;
+  border:1.5px solid var(--border);border-radius:8px;background:transparent;
+  color:var(--text2);font-size:13px;cursor:pointer;transition:all .2s;
+  font-family:'Noto Sans SC',sans-serif;
 }
-.sidebar::-webkit-scrollbar{width:4px}
-.sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-.guide-title{
-  font-family:'Noto Serif SC',serif;font-size:13px;font-weight:700;
-  color:var(--accent);letter-spacing:.06em;text-transform:uppercase;
-  margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid var(--border);
+.guide-btn:hover,.guide-btn.open{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+.guide-panel{
+  position:absolute;top:100%;left:0;right:0;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  box-shadow:var(--shadow-md);
+  max-height:0;overflow:hidden;
+  transition:max-height .35s cubic-bezier(.4,0,.2,1);
+  z-index:99;
 }
-.guide-step{display:flex;gap:12px;margin-bottom:20px;align-items:flex-start}
+.guide-panel.open{max-height:500px}
+.guide-inner{
+  max-width:1200px;margin:0 auto;
+  padding:28px 32px;
+  display:grid;grid-template-columns:repeat(6,1fr);gap:0;
+}
+.guide-step{display:flex;flex-direction:column;gap:8px;padding:0 20px;position:relative}
+.guide-step:not(:last-child)::after{
+  content:'→';position:absolute;right:-10px;top:10px;
+  color:var(--text3);font-size:16px;
+}
 .step-num{
-  width:22px;height:22px;border-radius:50%;background:var(--accent);
-  color:#fff;font-size:11px;font-weight:700;flex-shrink:0;
+  width:28px;height:28px;border-radius:50%;background:var(--accent);
+  color:#fff;font-size:12px;font-weight:700;flex-shrink:0;
   display:flex;align-items:center;justify-content:center;
-  font-family:'JetBrains Mono',monospace;margin-top:1px;
+  font-family:'JetBrains Mono',monospace;margin-bottom:4px;
 }
-.step-body{}
-.step-title{font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px}
-.step-desc{font-size:12px;color:var(--text2);line-height:1.7}
+.step-title{font-size:13px;font-weight:500;color:var(--text);line-height:1.4}
+.step-desc{font-size:11.5px;color:var(--text2);line-height:1.65}
 .step-desc a{color:var(--accent);text-decoration:none}
 .step-desc a:hover{text-decoration:underline}
-.guide-divider{border:none;border-top:1px solid var(--border-light);margin:16px 0}
 .guide-tip{
-  background:var(--accent-soft);border:1px solid rgba(29,53,87,.12);
-  border-radius:8px;padding:10px 12px;font-size:11.5px;color:var(--accent);
-  line-height:1.7;
+  grid-column:1/-1;margin-top:16px;padding-top:16px;
+  border-top:1px solid var(--border-light);
+  font-size:12px;color:var(--text2);
 }
-main{flex:1;min-width:0;padding:32px 24px}
+main{max-width:1200px;margin:0 auto;padding:32px 24px}
 @media(max-width:900px){
-  .layout{flex-direction:column}
-  .sidebar{width:100%;height:auto;position:static;border-right:none;border-bottom:1px solid var(--border-light);padding:20px 16px}
+  .guide-inner{grid-template-columns:repeat(3,1fr);row-gap:20px}
+  .guide-step:nth-child(3)::after{display:none}
 }
 @media(max-width:768px){
   .stats-row{grid-template-columns:repeat(2,1fr)}
   table{font-size:12px}
   th,td{padding:8px 10px}
+  .guide-inner{grid-template-columns:repeat(2,1fr)}
+  .guide-step:nth-child(2)::after,.guide-step:nth-child(4)::after{display:none}
 }
 /* 历史记录 */
 .history-section{margin-top:8px}
@@ -306,8 +316,11 @@ main{flex:1;min-width:0;padding:32px 24px}
   </div>
 </div>
 
-<header>
-  <div class="brand">&#127905; <span>摩天轮舆情监控</span></div>
+<header style="position:relative">
+  <div style="display:flex;align-items:center;gap:16px">
+    <div class="brand">&#127905; <span>摩天轮舆情监控</span></div>
+    <button class="guide-btn" id="guideBtn" onclick="toggleGuide()">&#128214; 使用指南</button>
+  </div>
   <div class="header-right">
     <button class="btn btn-outline" style="padding:7px 16px;font-size:13px" onclick="openDrawer()">&#128221; 投诉跟踪</button>
     <span id="clock"></span>
@@ -315,6 +328,43 @@ main{flex:1;min-width:0;padding:32px 24px}
     <span id="statusText">待命</span>
   </div>
 </header>
+
+<!-- 使用指南下拉面板 -->
+<div class="guide-panel" id="guidePanel">
+  <div class="guide-inner">
+    <div class="guide-step">
+      <div class="step-num">1</div>
+      <div class="step-title">安装插件</div>
+      <div class="step-desc">前往 <a href="https://smzs.xisence.com/download" target="_blank" rel="noopener">社媒助手下载页</a>，安装到 Chrome 或 Edge 浏览器。</div>
+    </div>
+    <div class="guide-step">
+      <div class="step-num">2</div>
+      <div class="step-title">采集数据</div>
+      <div class="step-desc">在小红书搜索关键词，点击插件图标选择「数据采集」，等待完成后导出 Excel。</div>
+    </div>
+    <div class="guide-step">
+      <div class="step-num">3</div>
+      <div class="step-title">上传文件</div>
+      <div class="step-desc">将 .xlsx 文件拖入上传区，或点击选择文件，支持批量笔记无上限。</div>
+    </div>
+    <div class="guide-step">
+      <div class="step-num">4</div>
+      <div class="step-title">AI 分析</div>
+      <div class="step-desc">点击「开始分析」，系统自动识别每条笔记的风险等级并生成举报文案。</div>
+    </div>
+    <div class="guide-step">
+      <div class="step-num">5</div>
+      <div class="step-title">查看 & 举报</div>
+      <div class="step-desc">结果按风险排序，展开笔记可复制举报文案，前往小红书提交举报。</div>
+    </div>
+    <div class="guide-step">
+      <div class="step-num">6</div>
+      <div class="step-title">投诉跟踪</div>
+      <div class="step-desc">标记笔记投诉状态，点击右上角「投诉跟踪」统一查看所有跟进记录。</div>
+    </div>
+    <div class="guide-tip">💡 已分析过的笔记自动缓存，再次上传同批次无需重复调用 AI。</div>
+  </div>
+</div>
 
 <!-- 投诉跟踪抽屉 -->
 <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
@@ -333,62 +383,6 @@ main{flex:1;min-width:0;padding:32px 24px}
     <div class="drawer-loading">加载中...</div>
   </div>
 </div>
-<div class="layout">
-<!-- 使用指南侧边栏 -->
-<aside class="sidebar">
-  <div class="guide-title">使用指南</div>
-
-  <div class="guide-step">
-    <div class="step-num">1</div>
-    <div class="step-body">
-      <div class="step-title">安装社媒助手插件</div>
-      <div class="step-desc">前往 <a href="https://smzs.xisence.com/download" target="_blank" rel="noopener">插件下载页</a>，按页面指引安装到 Chrome 或 Edge 浏览器。</div>
-    </div>
-  </div>
-
-  <div class="guide-step">
-    <div class="step-num">2</div>
-    <div class="step-body">
-      <div class="step-title">采集小红书数据</div>
-      <div class="step-desc">打开小红书，搜索目标关键词（如「摩天轮票务」），点击插件图标，选择「数据采集」，等待采集完成后导出为 Excel 文件。</div>
-    </div>
-  </div>
-
-  <div class="guide-step">
-    <div class="step-num">3</div>
-    <div class="step-body">
-      <div class="step-title">上传 Excel 文件</div>
-      <div class="step-desc">将导出的 .xlsx 文件拖入右侧上传区域，或点击选择文件。系统支持批量笔记，无数量上限。</div>
-    </div>
-  </div>
-
-  <div class="guide-step">
-    <div class="step-num">4</div>
-    <div class="step-body">
-      <div class="step-title">开始 AI 分析</div>
-      <div class="step-desc">点击「开始分析」，系统将自动识别每条笔记的风险等级（高 / 中 / 低 / 无），并生成对应举报文案。</div>
-    </div>
-  </div>
-
-  <div class="guide-step">
-    <div class="step-num">5</div>
-    <div class="step-body">
-      <div class="step-title">查看结果 & 举报</div>
-      <div class="step-desc">分析完成后，结果按风险从高到低排列。点击每条笔记可展开详情，复制举报文案后前往小红书提交举报。</div>
-    </div>
-  </div>
-
-  <div class="guide-step">
-    <div class="step-num">6</div>
-    <div class="step-body">
-      <div class="step-title">投诉状态跟踪</div>
-      <div class="step-desc">在结果列表中将笔记标记为「已投诉 / 已处理 / 已驳回」，点击右上角「投诉跟踪」可统一查看所有跟进记录。</div>
-    </div>
-  </div>
-
-  <hr class="guide-divider">
-  <div class="guide-tip">💡 已分析过的笔记会自动缓存，再次上传同一批次无需重复调用 AI，节省时间。</div>
-</aside>
 <main>
 <!-- 上传区 -->
 <div id="uploadSection" class="card">
@@ -815,6 +809,20 @@ function renderDrawer(){
   body.innerHTML=html;
 }
 
+// ── 使用指南 ──────────────────────────────────────────────
+function toggleGuide(){
+  const panel=document.getElementById('guidePanel');
+  const btn=document.getElementById('guideBtn');
+  const open=panel.classList.toggle('open');
+  btn.classList.toggle('open',open);
+}
+document.addEventListener('click',function(e){
+  if(!e.target.closest('#guidePanel')&&!e.target.closest('#guideBtn')){
+    document.getElementById('guidePanel').classList.remove('open');
+    document.getElementById('guideBtn').classList.remove('open');
+  }
+});
+
 // ── 删除批次 ──────────────────────────────────────────────
 function handleDeleteBatch(fid){
   if(localStorage.getItem('skipDeleteConfirm')==='1'){doDeleteBatch(fid);return;}
@@ -843,6 +851,5 @@ async function doDeleteBatch(fid){
 }
 </script>
 </main>
-</div><!-- /.layout -->
 </body>
 </html>
