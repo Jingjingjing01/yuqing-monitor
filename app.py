@@ -118,47 +118,10 @@ def analyze(file_id):
     if not store:
         return jsonify({"error": "文件不存在"}), 404
 
-    def _analyze_row(i, row_data):
-        """单条笔记分析，供线程池调用。"""
-        col_map = store["col_map"]
-        title    = str(row_data[col_map["笔记标题"]] or "")
-        content  = str(row_data[col_map["笔记内容"]] or "")
-        topics   = str(row_data[col_map["笔记话题"]] or "")
-        note_url = str(row_data[col_map["笔记链接"]] or "") if "笔记链接" in col_map else ""
-        key = note_key(title, content, note_url)
-
-        cached = False
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT * FROM note_cache WHERE note_key=%s", (key,))
-                row = cur.fetchone()
-        if row and row["risk_level"] != "分析失败":
-            result = {
-                "risk_level": row["risk_level"],
-                "risk_reason": row["risk_reason"],
-                "report_category": row["report_category"],
-                "report_text": row["report_text"],
-            }
-            cached = True
-        else:
-            result = analyze_note(title, content, topics)
-            with get_conn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("""
-                        INSERT INTO note_cache(note_key,risk_level,risk_reason,report_category,report_text)
-                        VALUES(%s,%s,%s,%s,%s)
-                        ON CONFLICT(note_key) DO UPDATE SET
-                          risk_level=EXCLUDED.risk_level,
-                          risk_reason=EXCLUDED.risk_reason,
-                          report_category=EXCLUDED.report_category,
-                          report_text=EXCLUDED.report_text
-                    """, (key, result["risk_level"], result.get("risk_reason",""),
-                          result.get("report_category",""), result.get("report_text","")))
-                conn.commit()
-
+    def _build_entry(i, row_data, title, content, topics, note_url, key, result):
         score = calc_influence(row_data, col_map)
         lvl   = influence_level(score)
-        entry = {
+        return {
             "index": i, "title": title, "content": content,
             "topics": topics, "note_url": note_url,
             "likes": int(row_data[col_map["点赞量"]] or 0),
@@ -168,24 +131,75 @@ def analyze(file_id):
             "influence_score": score, "influence_level": lvl,
             "note_key": key, **result,
         }
-        return entry, title, result["risk_level"], cached
+
+    def _analyze_uncached(i, row_data, title, content, topics, note_url, key):
+        """未命中缓存的笔记：调用 AI 并写入缓存。"""
+        result = analyze_note(title, content, topics)
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO note_cache(note_key,risk_level,risk_reason,report_category,report_text)
+                    VALUES(%s,%s,%s,%s,%s)
+                    ON CONFLICT(note_key) DO UPDATE SET
+                      risk_level=EXCLUDED.risk_level,
+                      risk_reason=EXCLUDED.risk_reason,
+                      report_category=EXCLUDED.report_category,
+                      report_text=EXCLUDED.report_text
+                """, (key, result["risk_level"], result.get("risk_reason",""),
+                      result.get("report_category",""), result.get("report_text","")))
+            conn.commit()
+        return _build_entry(i, row_data, title, content, topics, note_url, key, result), title, result["risk_level"]
 
     def generate():
         rows = store["rows"]
+        col_map = store["col_map"]
         total = len(rows)
         store["status"] = "analyzing"
         store["results"] = [None] * total
         done_count = 0
 
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {executor.submit(_analyze_row, i, row_data): i
-                       for i, row_data in enumerate(rows)}
-            for future in as_completed(futures):
-                i = futures[future]
-                entry, title, risk_level, cached = future.result()
-                store["results"][i] = entry
-                done_count += 1
-                yield f"data: {json.dumps({'current':done_count,'total':total,'title':title[:50],'risk_level':risk_level,'cached':cached}, ensure_ascii=False)}\n\n"
+        # 预处理所有行，计算 key
+        row_metas = []
+        for i, row_data in enumerate(rows):
+            title    = str(row_data[col_map["笔记标题"]] or "")
+            content  = str(row_data[col_map["笔记内容"]] or "")
+            topics   = str(row_data[col_map["笔记话题"]] or "")
+            note_url = str(row_data[col_map["笔记链接"]] or "") if "笔记链接" in col_map else ""
+            key = note_key(title, content, note_url)
+            row_metas.append((i, row_data, title, content, topics, note_url, key))
+
+        # P1-4：单次批量查缓存，避免每行独立查询
+        all_keys = [m[6] for m in row_metas]
+        cache_map = {}
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT note_key,risk_level,risk_reason,report_category,report_text "
+                    "FROM note_cache WHERE note_key=ANY(%s) AND risk_level!='分析失败'",
+                    (all_keys,)
+                )
+                for r in cur.fetchall():
+                    cache_map[r["note_key"]] = dict(r)
+
+        cached_metas   = [(m, cache_map[m[6]]) for m in row_metas if m[6] in cache_map]
+        uncached_metas = [m for m in row_metas if m[6] not in cache_map]
+
+        # 缓存命中的立即产出 SSE 事件
+        for (i, row_data, title, content, topics, note_url, key), cached_result in cached_metas:
+            entry = _build_entry(i, row_data, title, content, topics, note_url, key, cached_result)
+            store["results"][i] = entry
+            done_count += 1
+            yield f"data: {json.dumps({'current':done_count,'total':total,'title':title[:50],'risk_level':cached_result['risk_level'],'cached':True}, ensure_ascii=False)}\n\n"
+
+        # 未命中的并发调用 AI
+        if uncached_metas:
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                futures = {executor.submit(_analyze_uncached, *m): m[0] for m in uncached_metas}
+                for future in as_completed(futures):
+                    entry, title, risk_level = future.result()
+                    store["results"][entry["index"]] = entry
+                    done_count += 1
+                    yield f"data: {json.dumps({'current':done_count,'total':total,'title':title[:50],'risk_level':risk_level,'cached':False}, ensure_ascii=False)}\n\n"
 
         store["results"] = [r for r in store["results"] if r is not None]
 
@@ -232,6 +246,35 @@ def delete_batch(file_id):
         conn.commit()
     analysis_store.pop(file_id, None)
     return jsonify({"ok": True})
+
+
+@app.route("/complaints")
+def complaints():
+    """P1-3：直接返回所有非「待投诉」状态的笔记，供投诉跟踪抽屉使用，避免前端 N+1 查询。"""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT n.file_id, n.idx, n.title, n.note_url, n.risk_level, n.report_status,
+                       b.filename, b.analyzed_at
+                FROM notes n
+                JOIN batches b ON b.file_id = n.file_id
+                WHERE n.report_status != '待投诉'
+                ORDER BY b.analyzed_at DESC, n.idx
+            """)
+            rows = cur.fetchall()
+    result = []
+    for r in rows:
+        result.append({
+            "file_id":     r["file_id"],
+            "idx":         r["idx"],
+            "title":       r["title"],
+            "note_url":    r["note_url"] or "",
+            "risk_level":  r["risk_level"],
+            "status":      r["report_status"],
+            "filename":    r["filename"],
+            "analyzed_at": r["analyzed_at"].strftime("%Y-%m-%d %H:%M") if r["analyzed_at"] else "",
+        })
+    return jsonify(result)
 
 
 @app.route("/history")
