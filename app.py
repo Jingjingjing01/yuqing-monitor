@@ -5,6 +5,7 @@ import uuid
 import hashlib
 import io
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from flask import Flask, request, jsonify, render_template, Response, send_file
 from dotenv import load_dotenv
@@ -117,64 +118,76 @@ def analyze(file_id):
     if not store:
         return jsonify({"error": "文件不存在"}), 404
 
-    def generate():
-        rows = store["rows"]
+    def _analyze_row(i, row_data):
+        """单条笔记分析，供线程池调用。"""
         col_map = store["col_map"]
-        total = len(rows)
-        store["status"] = "analyzing"
-        store["results"] = []
+        title    = str(row_data[col_map["笔记标题"]] or "")
+        content  = str(row_data[col_map["笔记内容"]] or "")
+        topics   = str(row_data[col_map["笔记话题"]] or "")
+        note_url = str(row_data[col_map["笔记链接"]] or "") if "笔记链接" in col_map else ""
+        key = note_key(title, content, note_url)
 
-        for i, row_data in enumerate(rows):
-            title    = str(row_data[col_map["笔记标题"]] or "")
-            content  = str(row_data[col_map["笔记内容"]] or "")
-            topics   = str(row_data[col_map["笔记话题"]] or "")
-            note_url = str(row_data[col_map["笔记链接"]] or "") if "笔记链接" in col_map else ""
-            key = note_key(title, content, note_url)
-
-            # 查缓存
-            cached = False
+        cached = False
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM note_cache WHERE note_key=%s", (key,))
+                row = cur.fetchone()
+        if row and row["risk_level"] != "分析失败":
+            result = {
+                "risk_level": row["risk_level"],
+                "risk_reason": row["risk_reason"],
+                "report_category": row["report_category"],
+                "report_text": row["report_text"],
+            }
+            cached = True
+        else:
+            result = analyze_note(title, content, topics)
             with get_conn() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT * FROM note_cache WHERE note_key=%s", (key,))
-                    row = cur.fetchone()
-            if row and row["risk_level"] != "分析失败":
-                result = {
-                    "risk_level": row["risk_level"],
-                    "risk_reason": row["risk_reason"],
-                    "report_category": row["report_category"],
-                    "report_text": row["report_text"],
-                }
-                cached = True
-            else:
-                result = analyze_note(title, content, topics)
-                with get_conn() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute("""
-                            INSERT INTO note_cache(note_key,risk_level,risk_reason,report_category,report_text)
-                            VALUES(%s,%s,%s,%s,%s)
-                            ON CONFLICT(note_key) DO UPDATE SET
-                              risk_level=EXCLUDED.risk_level,
-                              risk_reason=EXCLUDED.risk_reason,
-                              report_category=EXCLUDED.report_category,
-                              report_text=EXCLUDED.report_text
-                        """, (key, result["risk_level"], result.get("risk_reason",""),
-                              result.get("report_category",""), result.get("report_text","")))
-                    conn.commit()
+                    cur.execute("""
+                        INSERT INTO note_cache(note_key,risk_level,risk_reason,report_category,report_text)
+                        VALUES(%s,%s,%s,%s,%s)
+                        ON CONFLICT(note_key) DO UPDATE SET
+                          risk_level=EXCLUDED.risk_level,
+                          risk_reason=EXCLUDED.risk_reason,
+                          report_category=EXCLUDED.report_category,
+                          report_text=EXCLUDED.report_text
+                    """, (key, result["risk_level"], result.get("risk_reason",""),
+                          result.get("report_category",""), result.get("report_text","")))
+                conn.commit()
 
-            score = calc_influence(row_data, col_map)
-            lvl   = influence_level(score)
-            entry = {
-                "index": i, "title": title, "content": content,
-                "topics": topics, "note_url": note_url,
-                "likes": int(row_data[col_map["点赞量"]] or 0),
-                "favs":  int(row_data[col_map["收藏量"]] or 0),
-                "comments": int(row_data[col_map["评论量"]] or 0),
-                "shares":   int(row_data[col_map["分享量"]] or 0),
-                "influence_score": score, "influence_level": lvl,
-                "note_key": key, **result,
-            }
-            store["results"].append(entry)
-            yield f"data: {json.dumps({'current':i+1,'total':total,'title':title[:50],'risk_level':result['risk_level'],'cached':cached}, ensure_ascii=False)}\n\n"
+        score = calc_influence(row_data, col_map)
+        lvl   = influence_level(score)
+        entry = {
+            "index": i, "title": title, "content": content,
+            "topics": topics, "note_url": note_url,
+            "likes": int(row_data[col_map["点赞量"]] or 0),
+            "favs":  int(row_data[col_map["收藏量"]] or 0),
+            "comments": int(row_data[col_map["评论量"]] or 0),
+            "shares":   int(row_data[col_map["分享量"]] or 0),
+            "influence_score": score, "influence_level": lvl,
+            "note_key": key, **result,
+        }
+        return entry, title, result["risk_level"], cached
+
+    def generate():
+        rows = store["rows"]
+        total = len(rows)
+        store["status"] = "analyzing"
+        store["results"] = [None] * total
+        done_count = 0
+
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {executor.submit(_analyze_row, i, row_data): i
+                       for i, row_data in enumerate(rows)}
+            for future in as_completed(futures):
+                i = futures[future]
+                entry, title, risk_level, cached = future.result()
+                store["results"][i] = entry
+                done_count += 1
+                yield f"data: {json.dumps({'current':done_count,'total':total,'title':title[:50],'risk_level':risk_level,'cached':cached}, ensure_ascii=False)}\n\n"
+
+        store["results"] = [r for r in store["results"] if r is not None]
 
         # 排序
         risk_order = {"高风险":0,"中风险":1,"低风险":2,"无风险":3,"分析失败":4}
