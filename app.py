@@ -16,10 +16,10 @@ load_dotenv()
 from yuqing_analyzer import analyze_note
 from db import get_conn, init_db
 
+app = Flask(__name__)
+
 with app.app_context():
     init_db()
-
-app = Flask(__name__)
 
 # 内存暂存：上传解析后的行数据（分析完即可丢弃）
 analysis_store = {}
