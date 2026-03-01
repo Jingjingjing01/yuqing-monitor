@@ -795,7 +795,7 @@ function renderDrawer(){
     html+=`<div class="complaint-item">
       <div class="complaint-top">
         <div class="complaint-title" title="${esc(d.title)}">${esc(d.title)}</div>
-        <button class="status-btn ${sc}" style="flex-shrink:0">${esc(d.status)}</button>
+        <button class="status-btn ${sc}" style="flex-shrink:0" onclick="cycleDrawerStatus(this,'${d.file_id}',${d.idx},event)">${esc(d.status)}</button>
       </div>
       <div class="complaint-meta">
         <span class="risk-badge ${rc}" style="font-size:11px;padding:2px 8px">${esc(d.risk_level)}</span>
@@ -806,6 +806,23 @@ function renderDrawer(){
     </div>`;
   });
   body.innerHTML=html;
+}
+
+async function cycleDrawerStatus(btn, fid, idx, e){
+  e.stopPropagation();
+  const cur = STATUS_LABELS.indexOf(btn.textContent.trim());
+  const next = (cur + 1) % STATUS_LABELS.length;
+  const newStatus = STATUS_LABELS[next];
+  btn.textContent = newStatus;
+  btn.className = 'status-btn ' + STATUS_CLS[next];
+  await fetch(`/status/${fid}/${idx}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status: newStatus})});
+  // 更新 drawerData 并重渲染（待投诉的会自动消失）
+  const item = drawerData.find(d => d.file_id === fid && d.idx === idx);
+  if(item){
+    item.status = newStatus;
+    if(newStatus === '待投诉') drawerData = drawerData.filter(d => !(d.file_id === fid && d.idx === idx));
+  }
+  renderDrawer();
 }
 
 // ── 使用指南 ──────────────────────────────────────────────
