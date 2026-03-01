@@ -194,7 +194,7 @@ tbody tr:hover{background:var(--accent-soft)}
   display:grid;grid-template-columns:repeat(6,1fr);gap:0;
 }
 .guide-step{display:flex;flex-direction:column;gap:8px;padding:0 20px;position:relative}
-.guide-step:not(:last-child)::after{
+.guide-step:not(:last-of-type)::after{
   content:'→';position:absolute;right:-10px;top:10px;
   color:var(--text3);font-size:16px;
 }
