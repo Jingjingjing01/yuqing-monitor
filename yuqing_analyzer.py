@@ -14,9 +14,12 @@ from openpyxl.styles import Font, PatternFill
 
 load_dotenv()
 
+import httpx
+
 client = OpenAI(
     base_url=os.getenv("API_BASE_URL"),
     api_key=os.getenv("API_KEY"),
+    http_client=httpx.Client(verify=False),
 )
 
 SYSTEM_PROMPT = """你是摩天轮票务品牌的舆情风险分析师。你的任务是分析小红书笔记内容，判断是否存在对"摩天轮票务"品牌的舆情风险，包括品牌侵权、假冒，以及损害品牌形象的负面内容。
