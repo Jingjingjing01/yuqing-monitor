@@ -137,7 +137,7 @@ def analyze(file_id):
                 with conn.cursor() as cur:
                     cur.execute("SELECT * FROM note_cache WHERE note_key=%s", (key,))
                     row = cur.fetchone()
-            if row:
+            if row and row["risk_level"] != "分析失败":
                 result = {
                     "risk_level": row["risk_level"],
                     "risk_reason": row["risk_reason"],
@@ -151,7 +151,12 @@ def analyze(file_id):
                     with conn.cursor() as cur:
                         cur.execute("""
                             INSERT INTO note_cache(note_key,risk_level,risk_reason,report_category,report_text)
-                            VALUES(%s,%s,%s,%s,%s) ON CONFLICT(note_key) DO NOTHING
+                            VALUES(%s,%s,%s,%s,%s)
+                            ON CONFLICT(note_key) DO UPDATE SET
+                              risk_level=EXCLUDED.risk_level,
+                              risk_reason=EXCLUDED.risk_reason,
+                              report_category=EXCLUDED.report_category,
+                              report_text=EXCLUDED.report_text
                         """, (key, result["risk_level"], result.get("risk_reason",""),
                               result.get("report_category",""), result.get("report_text","")))
                     conn.commit()
