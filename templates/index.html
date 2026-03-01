@@ -198,6 +198,20 @@ tbody tr:hover{background:var(--accent-soft)}
 .history-tag.low{background:rgba(21,128,61,.08);color:var(--low)}
 .history-tag.total{background:rgba(107,114,128,.08);color:var(--text2)}
 .history-empty{font-size:13px;color:var(--text2);text-align:center;padding:20px}
+/* 删除确认弹窗 */
+.modal-overlay{position:fixed;inset:0;background:rgba(26,25,23,.3);z-index:300;
+  display:none;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  box-shadow:var(--shadow-md);padding:28px 32px;max-width:380px;width:90%}
+.modal-title{font-family:'Noto Serif SC',serif;font-size:16px;font-weight:700;
+  color:var(--text);margin-bottom:10px}
+.modal-body{font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:20px}
+.modal-body strong{color:var(--high)}
+.modal-check{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);
+  margin-bottom:20px;cursor:pointer}
+.modal-check input{cursor:pointer}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px}
 /* 投诉跟踪抽屉 */
 .drawer-overlay{position:fixed;inset:0;background:rgba(26,25,23,.25);z-index:200;opacity:0;pointer-events:none;transition:opacity .25s}
 .drawer-overlay.open{opacity:1;pointer-events:all}
@@ -239,6 +253,19 @@ tbody tr:hover{background:var(--accent-soft)}
 </style>
 </head>
 <body>
+<!-- 删除确认弹窗 -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal">
+    <div class="modal-title">&#9888;&#65039; 确认删除</div>
+    <div class="modal-body">删除后该批次的所有分析结果将<strong>永久移除</strong>，包括投诉跟踪中的相关记录，且无法恢复。</div>
+    <label class="modal-check"><input type="checkbox" id="skipConfirmCheck"> 下次不再提醒</label>
+    <div class="modal-actions">
+      <button class="btn btn-outline" style="padding:8px 20px;font-size:13px" onclick="closeDeleteModal()">取消</button>
+      <button class="btn btn-primary" style="padding:8px 20px;font-size:13px;background:var(--high)" id="confirmDeleteBtn">确认删除</button>
+    </div>
+  </div>
+</div>
+
 <header>
   <div class="brand">&#127905; <span>摩天轮舆情监控</span></div>
   <div class="header-right">
@@ -576,11 +603,13 @@ async function loadHistory(){
       item.innerHTML=`<div class="history-meta">
         <div class="history-name">${esc(h.filename)}</div>
         <div class="history-time">${h.analyzed_at} · ${h.total} 条笔记</div>
-      </div><div class="history-tags">
+      </div><div class="history-tags" style="display:flex;align-items:center;gap:8px">
         ${rc['高风险']?`<span class="history-tag high">${rc['高风险']} 高</span>`:''}
         ${rc['中风险']?`<span class="history-tag mid">${rc['中风险']} 中</span>`:''}
         ${rc['低风险']?`<span class="history-tag low">${rc['低风险']} 低</span>`:''}
         <span class="history-tag total">${h.total} 条</span>
+        <button class="btn btn-outline" style="padding:4px 10px;font-size:11px;color:var(--high);border-color:rgba(185,28,28,.3);margin-left:4px"
+          onclick="event.stopPropagation();handleDeleteBatch('${h.file_id}')">&#128465; 删除</button>
       </div>`;
       item.onclick=()=>loadHistoryResult(h.file_id);
       el.appendChild(item);
@@ -688,6 +717,33 @@ function renderDrawer(){
     </div>`;
   });
   body.innerHTML=html;
+}
+
+// ── 删除批次 ──────────────────────────────────────────────
+function handleDeleteBatch(fid){
+  if(localStorage.getItem('skipDeleteConfirm')==='1'){doDeleteBatch(fid);return;}
+  document.getElementById('skipConfirmCheck').checked=false;
+  document.getElementById('confirmDeleteBtn').onclick=function(){
+    if(document.getElementById('skipConfirmCheck').checked)
+      localStorage.setItem('skipDeleteConfirm','1');
+    closeDeleteModal();
+    doDeleteBatch(fid);
+  };
+  document.getElementById('deleteModal').classList.add('open');
+}
+function closeDeleteModal(){
+  document.getElementById('deleteModal').classList.remove('open');
+}
+async function doDeleteBatch(fid){
+  try{
+    await fetch(`/batch/${fid}`,{method:'DELETE'});
+    loadHistory();
+    if(drawerData.length){
+      drawerData=drawerData.filter(d=>d.file_id!==fid);
+      renderDrawer();
+    }
+    showToast('已删除');
+  }catch(e){showToast('删除失败');}
 }
 </script>
 </main>

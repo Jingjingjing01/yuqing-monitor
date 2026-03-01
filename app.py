@@ -206,6 +206,16 @@ def analyze(file_id):
     return Response(generate(), mimetype="text/event-stream")
 
 
+@app.route("/batch/<file_id>", methods=["DELETE"])
+def delete_batch(file_id):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM batches WHERE file_id=%s", (file_id,))
+        conn.commit()
+    analysis_store.pop(file_id, None)
+    return jsonify({"ok": True})
+
+
 @app.route("/history")
 def history():
     with get_conn() as conn:
