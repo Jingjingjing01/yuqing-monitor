@@ -7,7 +7,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 
 def get_conn():
-    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor, sslmode="require")
 
 
 def init_db():
