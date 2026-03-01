@@ -6,7 +6,7 @@ sleep 4
 echo "以远程调试模式启动 Chrome..."
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
   --remote-debugging-port=9222 \
-  --no-first-run &
+  --no-first-run > /dev/null 2>&1 &
 
 # 等待调试端口就绪（最多 15 秒）
 echo "等待 Chrome 启动..."
