@@ -87,6 +87,7 @@ main{max-width:1200px;margin:0 auto;padding:32px 24px}
 }
 .log-box::-webkit-scrollbar{width:4px}
 .log-box::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.analyze-timer{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text2)}
 /* 统计卡片 */
 .stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:24px}
 .stat-card{
@@ -297,6 +298,7 @@ tbody tr:hover{background:var(--accent-soft)}
       <div class="progress-text" id="progressText">0%</div>
     </div>
     <div class="current-title" id="currentTitle">准备中...</div>
+    <div class="analyze-timer" id="analyzeTimer" style="display:none">已分析 <span id="timerDisplay">0分0秒</span></div>
     <div style="font-size:13px;color:var(--text2)">
       已完成 <span id="doneCount" style="color:var(--accent);font-family:'JetBrains Mono',monospace">0</span>
       / <span id="totalCount" style="font-family:'JetBrains Mono',monospace">0</span> 条
@@ -331,7 +333,10 @@ tbody tr:hover{background:var(--accent-soft)}
 <script>
 const STATUS_LABELS=['待投诉','已投诉','已处理','已驳回'];
 const STATUS_CLS=['s0','s1','s2','s3'];
+let timerInterval=null;
 let noteStatuses={};
+let fileId=null;
+let totalNotes=0;
 
 async function loadNoteStatuses(fid){
   try{
@@ -397,13 +402,14 @@ async function startAnalysis(){
 }
 
 function runSSE(){
+  startTimer();
   setStatus('running','分析中');
   const es=new EventSource(`/analyze/${fileId}`);
   const circumference=389.56;
   es.onmessage=function(e){
     const d=JSON.parse(e.data);
     if(d.done){
-      es.close();setStatus('done','完成');loadResults();loadHistory();return;
+      es.close();stopTimer();setStatus('done','完成');loadResults();loadHistory();return;
     }
     const pct=d.current/d.total;
     $('progressCircle').style.strokeDashoffset=circumference*(1-pct);
@@ -508,6 +514,7 @@ function exportExcel(){
 }
 
 function resetAll(){
+  stopTimer();
   fileId=null;totalNotes=0;window._selectedFile=null;
   $('fileInput').value='';
   $('fileInfo').style.display='none';
@@ -539,6 +546,19 @@ function setStatus(cls,text){
 function showToast(msg){
   const t=$('toast');t.textContent=msg;t.classList.add('show');
   setTimeout(()=>t.classList.remove('show'),2000);
+}
+
+function startTimer(){
+  const start=Date.now();
+  $('analyzeTimer').style.display='block';
+  timerInterval=setInterval(()=>{
+    const s=Math.floor((Date.now()-start)/1000);
+    $('timerDisplay').textContent=Math.floor(s/60)+'分'+s%60+'秒';
+  },1000);
+}
+function stopTimer(){
+  clearInterval(timerInterval);timerInterval=null;
+  $('analyzeTimer').style.display='none';
 }
 
 // 历史记录
@@ -616,10 +636,11 @@ async function loadDrawerData(){
       const d=await r.json();
       if(d.results){
         d.results.forEach(n=>{
-          if(n.report_status&&n.report_status!=='待投诉'){
+          const st=n.report_status||'待投诉';
+          if(st!=='待投诉'){
             drawerData.push({
               title:n.title,
-              status:n.report_status,
+              status:st,
               note_url:n.note_url||'',
               risk_level:n.risk_level,
               filename:b.filename,
