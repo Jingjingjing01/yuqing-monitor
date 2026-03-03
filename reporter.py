@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-CDP_URL = "http://localhost:9222"   # Chrome 远程调试地址
+CDP_URL = os.getenv("CDP_URL", "http://localhost:9222")
 
 
 # ── 数据库操作 ────────────────────────────────────────────
