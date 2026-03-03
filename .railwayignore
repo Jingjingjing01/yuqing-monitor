@@ -1,0 +1,7 @@
+gunicorn.ctl
+venv/
+.claude/
+__pycache__/
+*.pyc
+uploads/
+.env

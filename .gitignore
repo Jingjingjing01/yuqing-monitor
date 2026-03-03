@@ -4,44 +4,28 @@
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+venv/
 
-# Playwright
-.playwright/
+# 运行时文件
+gunicorn.ctl
+uploads/
+*.log
+
+# 测试/调试脚本（可能含硬编码凭证）
+test_*.py
+
+# 旧版 JSON 遗留
+history.json
+note_cache.json
+
+# macOS
+.DS_Store
 
 # IDE
 .vscode/
 .idea/
 *.swp
-*.swo
-*~
 
-# 日志
-*.log
-
-# 临时文件
-*.tmp
-.DS_Store
-
-# 项目运行时文件
-uploads/
-*.json
-*.xls
-*.xlsx
+# Claude Code
+.claude/
