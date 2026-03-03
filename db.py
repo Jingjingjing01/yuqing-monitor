@@ -23,9 +23,11 @@ def init_db():
                     filename    TEXT NOT NULL,
                     total       INT  NOT NULL,
                     risk_counts JSONB,
+                    file_hash   TEXT,
                     analyzed_at TIMESTAMPTZ DEFAULT NOW()
                 );
             """)
+            cur.execute("ALTER TABLE batches ADD COLUMN IF NOT EXISTS file_hash TEXT;")
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS notes (
                     id              SERIAL PRIMARY KEY,

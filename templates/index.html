@@ -316,6 +316,17 @@ main{max-width:1200px;margin:0 auto;padding:32px 24px}
     </div>
   </div>
 </div>
+<!-- 重复上传提示弹窗 -->
+<div class="modal-overlay" id="duplicateModal">
+  <div class="modal">
+    <div class="modal-title">&#128203; 文件已分析过</div>
+    <div class="modal-body" id="duplicateModalBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" style="padding:8px 20px;font-size:13px" onclick="closeDuplicateModal()">取消</button>
+      <button class="btn btn-primary" style="padding:8px 20px;font-size:13px" id="viewExistingBtn">查看历史结果</button>
+    </div>
+  </div>
+</div>
 
 <header style="position:relative">
   <div style="display:flex;align-items:center;gap:16px">
@@ -511,6 +522,10 @@ async function startAnalysis(){
     const res=await fetch('/upload',{method:'POST',body:form});
     const data=await res.json();
     if(data.error){showToast(data.error);$('startBtn').disabled=false;$('startBtn').textContent='开始分析';return}
+    if(data.already_analyzed){
+      $('startBtn').disabled=false;$('startBtn').textContent='开始分析';
+      showDuplicateModal(data);return;
+    }
     fileId=data.file_id;
     totalNotes=data.total;
     showSection('analyze');
@@ -818,6 +833,14 @@ document.addEventListener('click',function(e){
   }
 });
 
+// ── 重复上传弹窗 ──────────────────────────────────────────
+function showDuplicateModal(data){
+  $('duplicateModalBody').innerHTML=`该文件 <strong>${esc(data.filename)}</strong> 已于 <strong>${data.analyzed_at}</strong> 分析过，无需重复上传。`;
+  $('viewExistingBtn').onclick=function(){closeDuplicateModal();loadHistoryResult(data.file_id)};
+  $('duplicateModal').classList.add('open');
+}
+function closeDuplicateModal(){$('duplicateModal').classList.remove('open')}
+
 // ── 删除批次 ──────────────────────────────────────────────
 function handleDeleteBatch(fid){
   if(localStorage.getItem('skipDeleteConfirm')==='1'){doDeleteBatch(fid);return;}
@@ -847,7 +870,7 @@ async function doDeleteBatch(fid){
 </script>
 </main>
 <footer style="text-align:center;padding:20px;font-size:12px;color:var(--text3);font-family:'JetBrains Mono',monospace;border-top:1px solid var(--border-light)">
-  v1.0.4
+  v1.0.5
 </footer>
 </body>
 </html>

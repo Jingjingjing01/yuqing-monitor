@@ -88,10 +88,29 @@ def upload():
     if not f or not f.filename.endswith((".xlsx", ".xls")):
         return jsonify({"error": "请上传 Excel 文件"}), 400
 
+    file_bytes = f.read()
+    file_hash = hashlib.md5(file_bytes).hexdigest()
+
+    # 检测重复：同一文件内容已分析过
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT file_id, filename, analyzed_at FROM batches WHERE file_hash=%s",
+                (file_hash,)
+            )
+            existing = cur.fetchone()
+    if existing:
+        return jsonify({
+            "already_analyzed": True,
+            "file_id": existing["file_id"],
+            "filename": existing["filename"],
+            "analyzed_at": existing["analyzed_at"].strftime("%Y-%m-%d %H:%M") if existing["analyzed_at"] else "",
+        })
+
     file_id = uuid.uuid4().hex[:12]
     ext = Path(f.filename).suffix.lower() or ".xlsx"
     tmp_path = Path("/tmp") / f"{file_id}{ext}"
-    f.save(tmp_path)
+    tmp_path.write_bytes(file_bytes)
 
     try:
         headers, col_map, rows = read_excel_notes(tmp_path)
@@ -99,10 +118,11 @@ def upload():
         tmp_path.unlink(missing_ok=True)
         return jsonify({"error": str(e)}), 400
     finally:
-        tmp_path.unlink(missing_ok=True)  # 解析完立即删除
+        tmp_path.unlink(missing_ok=True)
 
     analysis_store[file_id] = {
         "filename": f.filename,
+        "file_hash": file_hash,
         "headers": headers,
         "col_map": col_map,
         "rows": rows,
@@ -117,6 +137,8 @@ def analyze(file_id):
     store = analysis_store.get(file_id)
     if not store:
         return jsonify({"error": "文件不存在"}), 404
+
+    col_map = store["col_map"]  # 提升到 analyze() 作用域，_build_entry 和 generate() 均可访问
 
     def _build_entry(i, row_data, title, content, topics, note_url, key, result):
         score = calc_influence(row_data, col_map)
@@ -152,7 +174,6 @@ def analyze(file_id):
 
     def generate():
         rows = store["rows"]
-        col_map = store["col_map"]
         total = len(rows)
         store["status"] = "analyzing"
         store["results"] = [None] * total
@@ -216,9 +237,9 @@ def analyze(file_id):
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO batches(file_id,filename,total,risk_counts)
-                    VALUES(%s,%s,%s,%s) ON CONFLICT(file_id) DO NOTHING
-                """, (file_id, store["filename"], total, json.dumps(risk_counts, ensure_ascii=False)))
+                    INSERT INTO batches(file_id,filename,total,risk_counts,file_hash)
+                    VALUES(%s,%s,%s,%s,%s) ON CONFLICT(file_id) DO NOTHING
+                """, (file_id, store["filename"], total, json.dumps(risk_counts, ensure_ascii=False), store.get("file_hash")))
                 for r in store["results"]:
                     cur.execute("""
                         INSERT INTO notes(file_id,idx,title,content,topics,note_url,
